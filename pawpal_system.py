@@ -1,4 +1,8 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
+from datetime import date, timedelta
+from typing import Optional
 
 
 @dataclass
@@ -7,8 +11,10 @@ class Task:
     category: str
     duration_minutes: int
     priority: int                  # 1 (low) to 5 (high)
-    frequency: str = "daily"       # e.g. "daily", "weekly", "as needed"
+    frequency: str = "daily"       # "daily", "weekly", "as needed"
     completed: bool = False
+    start_time: str = ""           # "HH:MM" — empty means unscheduled
+    due_date: str = ""             # "YYYY-MM-DD" — empty means no due date
 
     def mark_complete(self):
         """Mark this task as completed."""
@@ -17,6 +23,22 @@ class Task:
     def is_high_priority(self) -> bool:
         """Return True if the task's priority is 4 or higher."""
         return self.priority >= 4
+
+    def next_occurrence(self) -> "Task | None":
+        """Return a new incomplete Task due on the next occurrence, or None for 'as needed'."""
+        if self.frequency == "as needed":
+            return None
+        base = date.fromisoformat(self.due_date) if self.due_date else date.today()
+        delta = timedelta(days=1) if self.frequency == "daily" else timedelta(weeks=1)
+        return Task(
+            name=self.name,
+            category=self.category,
+            duration_minutes=self.duration_minutes,
+            priority=self.priority,
+            frequency=self.frequency,
+            start_time=self.start_time,
+            due_date=(base + delta).isoformat(),
+        )
 
 
 @dataclass
@@ -80,6 +102,69 @@ class Scheduler:
                 time_remaining -= task.duration_minutes
         return plan
 
+    def sort_by_time(self) -> list[tuple[Pet, Task]]:
+        """Return all tasks sorted by start_time (HH:MM); unscheduled tasks appear last."""
+        all_pairs = self.owner.get_all_tasks()
+        return sorted(all_pairs, key=lambda x: (x[1].start_time == "", x[1].start_time))
+
+    def filter_tasks(
+        self,
+        pet_name: Optional[str] = None,
+        completed: Optional[bool] = None,
+    ) -> list[tuple[Pet, Task]]:
+        """Filter (pet, task) pairs by pet name and/or completion status."""
+        pairs = self.owner.get_all_tasks()
+        if pet_name is not None:
+            pairs = [(p, t) for p, t in pairs if p.name == pet_name]
+        if completed is not None:
+            pairs = [(p, t) for p, t in pairs if t.completed == completed]
+        return pairs
+
+    def mark_task_complete(self, pet_name: str, task_name: str):
+        """Mark a task complete and queue the next occurrence for recurring tasks."""
+        for pet in self.owner.pets:
+            if pet.name == pet_name:
+                for task in pet.tasks:
+                    if task.name == task_name and not task.completed:
+                        task.mark_complete()
+                        next_task = task.next_occurrence()
+                        if next_task:
+                            pet.add_task(next_task)
+                        return
+
+    def detect_conflicts(self) -> list[str]:
+        """Return warning strings for any tasks that share an exact start_time."""
+        warnings: list[str] = []
+
+        # Within each pet
+        for pet in self.owner.pets:
+            seen: dict[str, str] = {}
+            for task in pet.tasks:
+                if not task.start_time or task.completed:
+                    continue
+                if task.start_time in seen:
+                    warnings.append(
+                        f"Conflict [{pet.name}]: '{seen[task.start_time]}' and "
+                        f"'{task.name}' both start at {task.start_time}"
+                    )
+                else:
+                    seen[task.start_time] = task.name
+
+        # Across pets (owner must be present for both)
+        cross: dict[str, list[str]] = {}
+        for pet in self.owner.pets:
+            for task in pet.tasks:
+                if not task.start_time or task.completed:
+                    continue
+                cross.setdefault(task.start_time, []).append(f"{pet.name}/{task.name}")
+        for time_slot, entries in cross.items():
+            if len(entries) > 1:
+                warnings.append(
+                    f"Cross-pet conflict at {time_slot}: {', '.join(entries)}"
+                )
+
+        return warnings
+
     def explain_plan(self) -> str:
         """Return a formatted string summarizing today's scheduled tasks and total time used."""
         plan = self.generate_plan()
@@ -96,12 +181,3 @@ class Scheduler:
             total += task.duration_minutes
         lines.append(f"Total: {total} / {self.owner.get_available_time()} min")
         return "\n".join(lines)
-
-    def mark_task_complete(self, pet_name: str, task_name: str):
-        """Mark a specific pet's task as complete."""
-        for pet in self.owner.pets:
-            if pet.name == pet_name:
-                for task in pet.tasks:
-                    if task.name == task_name:
-                        task.mark_complete()
-                        return

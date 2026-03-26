@@ -4,13 +4,25 @@
 
 **a. Initial design**
 
-- Briefly describe your initial UML design.
-- What classes did you include, and what responsibilities did you assign to each?
+The initial UML design centered on four classes with clear, separated responsibilities. `Pet` and `Task` were modeled as simple data-holding objects (later converted to dataclasses), while `Owner` and `Scheduler` carried behavioral logic.
+
+- **Pet** — stores identity and care context for the animal: name, species, age, and any special needs. Responsible for producing a human-readable summary of itself.
+- **Task** — represents a single care activity (e.g. walk, feeding, medication) with a duration, category, priority level, and completion status. Responsible for reporting whether it is high priority and for marking itself complete.
+- **Owner** — holds the pet owner's name, their `Pet`, and how many minutes per day they have available. Responsible for reporting available time to the scheduler.
+- **Scheduler** — the orchestrating class. It holds an `Owner` (and reaches the `Pet` through it) and manages a list of `Task` objects. Responsible for sorting and fitting tasks within the owner's time budget and explaining the resulting plan.
 
 **b. Design changes**
 
-- Did your design change during implementation?
-- If yes, describe at least one change and why you made it.
+After an AI review of the skeleton, two changes were made:
+
+1. **Removed unused `field` import** — `field` was imported from `dataclasses` but never used in the skeleton. Removing it keeps the imports honest and avoids confusion when implementing methods later.
+
+2. **Converted `Owner` to a `@dataclass`** — the original skeleton used a manual `__init__` for `Owner` while `Pet` and `Task` used `@dataclass`. The AI flagged this as an inconsistency with no justification. Since `Owner` is also a plain data-holding object (name, available_minutes, pet), converting it to a dataclass makes the style uniform across all three value-type classes.
+
+Changes **not** made (deferred to implementation):
+- Priority range validation on `Task` — will add when implementing `is_high_priority()`.
+- Tie-breaking in `generate_plan()` — will define a consistent rule when implementing scheduling logic.
+- `get_available_time()` passthrough — kept for now in case time tracking becomes dynamic; will remove if it stays trivial after implementation.
 
 ---
 
@@ -23,8 +35,14 @@
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+The conflict detector checks for **exact start_time matches** rather than overlapping time windows. For example, a 30-minute task starting at 07:00 and a 10-minute task starting at 07:15 would not be flagged — even though they genuinely overlap — because 07:00 ≠ 07:15.
+
+This is a reasonable tradeoff for this scenario because:
+1. **Simplicity**: checking exact equality is O(n) per pet with a dictionary; overlap detection would require sorting and comparing intervals (O(n log n)) with more complex logic.
+2. **Stage appropriateness**: at this stage of the app, most tasks are short and owners are expected to schedule them intentionally at distinct times. Exact-match detection catches the most obvious mistakes (two tasks assigned the same slot) without over-engineering the constraint layer.
+3. **Actionable warnings**: an exact-match conflict always means the schedule is wrong; an overlap might be intentional (e.g., a slow feeding bowl left out during a walk). Exact-match warnings are less likely to produce false positives.
+
+The next iteration could replace this with a proper interval-overlap check using `start_time + duration_minutes` to compute end times.
 
 ---
 
