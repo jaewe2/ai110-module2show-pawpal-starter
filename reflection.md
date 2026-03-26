@@ -4,28 +4,25 @@
 
 **a. Initial design**
 
-The initial UML design centered on four classes with clear, separated responsibilities. `Pet` and `Task` were modeled as simple data-holding objects (later converted to dataclasses), while `Owner` and `Scheduler` carried behavioral logic.
+I started with four classes. Pet and Task were basically just data containers — they hold information and don't do much on their own. Owner and Scheduler were where the real logic lived.
 
-- **Pet** — stores identity and care context for the animal: name, species, age, and any special needs. Responsible for producing a human-readable summary of itself.
-- **Task** — represents a single care activity (e.g. walk, feeding, medication) with a duration, category, priority level, and completion status. Responsible for reporting whether it is high priority and for marking itself complete.
-- **Owner** — holds the pet owner's name, their `Pet`, and how many minutes per day they have available. Responsible for reporting available time to the scheduler.
-- **Scheduler** — the orchestrating class. It holds an `Owner` (and reaches the `Pet` through it) and manages a list of `Task` objects. Responsible for sorting and fitting tasks within the owner's time budget and explaining the resulting plan.
+- **Pet** — stores the animal's name, species, age, and any special needs. It can also give you a quick readable summary of itself.
+- **Task** — represents one care activity like a walk or medication. It knows its duration, priority, and whether it's been done.
+- **Owner** — holds the owner's name and how many minutes they have available in the day.
+- **Scheduler** — the brain of the app. It takes the owner's info and figures out which tasks to do today based on time and priority.
 
 **b. Design changes**
 
-After an AI review of the skeleton, two immediate changes were made:
+A couple small things changed after an AI review of the early skeleton:
 
-1. **Removed unused `field` import** — `field` was imported from `dataclasses` but never used in the skeleton. Removing it keeps the imports honest and avoids confusion when implementing methods later.
+1. I removed an unused `field` import — it got added automatically but was never actually used.
+2. I made `Owner` a dataclass to match how `Pet` and `Task` were already set up. It was inconsistent before with no good reason.
 
-2. **Converted `Owner` to a `@dataclass`** — the original skeleton used a manual `__init__` for `Owner` while `Pet` and `Task` used `@dataclass`. The AI flagged this as an inconsistency with no justification. Since `Owner` is also a plain data-holding object (name, available_minutes, pet), converting it to a dataclass makes the style uniform across all three value-type classes.
+Bigger changes came during building:
 
-During full implementation, three larger structural changes emerged:
-
-3. **`Pet` now owns tasks** — in the original design, `Scheduler` held the task list. Moving tasks into `Pet` better models reality (a walk belongs to Buddy, not to the scheduler) and made multi-pet support natural.
-
-4. **`Owner` manages multiple pets** — the initial design had one pet per owner. Switching to `list[Pet]` required no logic changes in `Scheduler` because it retrieves tasks through `Owner.get_all_tasks()`.
-
-5. **`Task` gained `start_time`, `due_date`, and `next_occurrence()`** — these were not in the initial UML and were added when implementing sorting, conflict detection, and recurring task features in Phase 3.
+3. I moved tasks into `Pet` instead of `Scheduler`. It just made more sense — Buddy's walk belongs to Buddy, not to the scheduler.
+4. I changed `Owner` to hold a list of pets instead of just one. This made multi-pet support easy.
+5. I added `start_time`, `due_date`, and a `next_occurrence()` method to `Task` once I started building the sorting and recurring task features.
 
 ---
 
@@ -33,25 +30,22 @@ During full implementation, three larger structural changes emerged:
 
 **a. Constraints and priorities**
 
-The scheduler considers two primary constraints:
+The scheduler looks at two things: how much time the owner has and how important each task is.
 
-- **Time budget** — `Owner.available_minutes` caps the total duration of the day's plan. Tasks are greedily added until no more fit.
-- **Priority** — tasks are sorted descending by `priority` (1–5), so high-priority care (medications, feeding) is always scheduled before lower-priority enrichment or grooming.
+Tasks are sorted by priority first (5 is most important, 1 is least). If two tasks have the same priority, shorter ones go first so you can fit more into the day. It keeps adding tasks until there's no more time left.
 
-A secondary sort key (duration ascending) breaks ties between same-priority tasks — shorter tasks are preferred when priority is equal, which maximizes the number of tasks that fit in the available window.
-
-Time and priority were chosen as the primary constraints because they directly reflect real owner constraints: a busy owner has a fixed window and must ensure medical and nutrition tasks happen first. Preferences and pet-specific rules (e.g., "Buddy needs outdoor time before 9am") were consciously deferred as future features to keep the logic layer simple and testable.
+I focused on time and priority because those are the most real constraints a pet owner actually has. Things like "Buddy needs a walk before 9am" could be added later — I didn't want to over-build it before the basics worked.
 
 **b. Tradeoffs**
 
-The conflict detector checks for **exact start_time matches** rather than overlapping time windows. For example, a 30-minute task starting at 07:00 and a 10-minute task starting at 07:15 would not be flagged — even though they genuinely overlap — because 07:00 ≠ 07:15.
+The conflict checker only catches tasks that have the exact same start time. So if one task starts at 07:00 and another starts at 07:15, it won't flag that — even if they technically overlap.
 
-This is a reasonable tradeoff for this scenario because:
-1. **Simplicity**: checking exact equality is O(n) per pet with a dictionary; overlap detection would require sorting and comparing intervals (O(n log n)) with more complex logic.
-2. **Stage appropriateness**: at this stage of the app, most tasks are short and owners are expected to schedule them intentionally at distinct times. Exact-match detection catches the most obvious mistakes (two tasks assigned the same slot) without over-engineering the constraint layer.
-3. **Actionable warnings**: an exact-match conflict always means the schedule is wrong; an overlap might be intentional (e.g., a slow feeding bowl left out during a walk). Exact-match warnings are less likely to produce false positives.
+I kept it simple like this because:
+- It catches the most obvious mistake (two things literally scheduled at the same time)
+- It's less likely to give false alarms — sometimes overlaps are fine, like leaving a food bowl out during a walk
+- Adding real interval overlap detection would've been a lot more code for a feature that probably won't matter much at this stage
 
-The next iteration could replace this with a proper interval-overlap check using `start_time + duration_minutes` to compute end times.
+If I kept building this, I'd switch to checking actual start and end times.
 
 ---
 
@@ -59,20 +53,21 @@ The next iteration could replace this with a proper interval-overlap check using
 
 **a. How you used AI**
 
-AI was used across all four phases of this project:
+I used AI throughout the whole project but in different ways at each phase.
 
-- **Phase 1 (Design)**: AI generated the initial Mermaid.js UML diagram from a plain-English description of the four classes. The most useful prompts were specific: "Review this diagram and flag any missing relationships or unnecessary complexity." This produced concrete, actionable feedback (the missing Owner→Pet ownership relationship, the unused `field` import) rather than generic suggestions.
-- **Phase 2 (Skeleton + Implementation)**: AI converted the UML into Python dataclass stubs and later fleshed out method bodies. Prompts like "how should Scheduler retrieve all tasks from Owner's pets?" helped clarify the ownership chain before writing any code.
-- **Phase 3 (Algorithms)**: AI suggested using a lambda with a tuple key `(start_time == "", start_time)` to sort tasks while pushing unscheduled ones to the end — a clean Python idiom that would have taken longer to arrive at independently.
-- **Phase 4 (Tests)**: AI helped identify edge cases to cover (unknown pet name, as-needed recurrence returning None, completed tasks excluded from conflict checks) that are easy to overlook when writing tests for your own code.
+In the design phase, I asked it to generate a UML diagram and then reviewed what it made. Asking it to "flag missing relationships or unnecessary complexity" was way more useful than just asking it to "make a diagram."
 
-The most effective prompt pattern across all phases was: **give AI the existing file as context, describe what you want, and ask it to flag tradeoffs or problems** rather than just generate code.
+When building the skeleton, I asked things like "how should Scheduler get tasks from the Owner's pets?" which helped me figure out the right structure before I wrote any real code.
+
+For the algorithm work, AI suggested using a tuple key `(start_time == "", start_time)` for sorting — a neat Python trick for pushing empty values to the end. That would've taken me a while to figure out on my own.
+
+For tests, it helped me think of edge cases I would've missed, like what happens if you try to mark a task complete for a pet that doesn't exist.
 
 **b. Judgment and verification**
 
-During Phase 3, AI initially suggested making `Scheduler` hold a direct reference to a flat `list[Task]` (separate from `Pet`) for simpler sorting and filtering. This was rejected because it would have duplicated data: tasks would exist in both `Pet.tasks` and `Scheduler.tasks`, creating synchronisation bugs whenever a task was added or removed through the `Pet` interface.
+At one point AI suggested having Scheduler hold its own flat list of tasks, separate from Pet. I didn't go with that because it would have meant storing the same task in two places — once in the pet and once in the scheduler. Any time you added or removed a task, you'd have to update both lists, which would cause bugs.
 
-The decision was verified by tracing through what `mark_task_complete` and `add_task` would need to do under each design: with the AI's version, both the pet's list and the scheduler's list would need updating on every mutation. With the owner-chain design (`Scheduler → Owner.get_all_tasks() → Pet.tasks`), there is a single source of truth and no duplication. The AI's suggestion optimised for read simplicity at the cost of write correctness — a tradeoff that is wrong for a stateful app.
+I thought it through by asking: what would `add_task` and `mark_task_complete` have to do under each design? With the AI's version, both places need updating every time. With the approach I used, there's only one place tasks live (inside Pet), and the Scheduler just reads them through the owner. Simpler and less error-prone.
 
 ---
 
@@ -80,28 +75,28 @@ The decision was verified by tracing through what `mark_task_complete` and `add_
 
 **a. What you tested**
 
-The 36-test suite covers:
+I wrote 36 tests total. Here's what they cover:
 
-- **Task behaviour**: completion, priority threshold, recurrence for all three frequency types, attribute preservation across `next_occurrence()`
-- **Pet behaviour**: task addition and removal, safe removal of nonexistent names
-- **Owner behaviour**: available time, multi-pet aggregation, empty-pets edge case
-- **Scheduler — generate_plan**: time budget enforcement, priority ordering, skipping completed tasks, empty and over-budget edge cases
-- **Scheduler — sort_by_time**: chronological order, unscheduled tasks last, empty list
-- **Scheduler — filter_tasks**: by pet name, by status, combined, and no-filter passthrough
-- **Scheduler — mark_task_complete + recurrence**: flag set, next occurrence added (daily), not added (as needed), unknown pet is a no-op
-- **Scheduler — detect_conflicts**: no conflict, within-pet, cross-pet, unscheduled ignored, completed excluded
+- Task: marking complete, checking priority level, generating the next occurrence for daily/weekly/as-needed tasks
+- Pet: adding and removing tasks, including safely removing a task that doesn't exist
+- Owner: getting available time, adding pets, pulling all tasks across multiple pets
+- Scheduler generate_plan: stays within the time budget, orders by priority, skips completed tasks, handles an empty task list
+- Scheduler sort_by_time: comes back in order, unscheduled tasks go last
+- Scheduler filter_tasks: by pet name, by completion status, or no filter at all
+- Scheduler mark_task_complete: sets the flag, adds next occurrence for recurring tasks, does nothing if the pet doesn't exist
+- Scheduler detect_conflicts: catches same-time conflicts within one pet and across pets, ignores unscheduled or completed tasks
 
-These tests were important because the scheduling logic depends on several interacting behaviours (sorting, filtering, recurrence) that are easy to break individually without affecting others. Tests isolate each method so regressions are caught immediately.
+These were important because a lot of features depend on each other. If recurrence breaks, it could mess up the plan. Tests let me catch problems in one place without having to run the whole app.
 
 **b. Confidence**
 
-Confidence level: **★★★★☆**
+Confidence: **★★★★☆**
 
-The core logic is well tested. Remaining gaps:
+The core logic works and is tested well. A few things I'd still want to cover:
 
-- **Input validation**: malformed `start_time` (e.g. "9:00" vs "09:00"), negative durations, priority outside 1–5
-- **UI integration**: Streamlit session state is not tested; the app's behaviour on repeated reruns is only manually verified
-- **Recurrence with no due_date**: `next_occurrence()` falls back to `date.today()` when `due_date` is empty, which may produce surprising results if a task is completed late
+- What happens with a badly formatted start_time like "9:00" instead of "09:00"
+- The Streamlit UI isn't tested — I only checked it manually
+- If a task has no due_date and you mark it complete, it falls back to today's date, which could be off
 
 ---
 
@@ -109,14 +104,16 @@ The core logic is well tested. Remaining gaps:
 
 **a. What went well**
 
-The clearest success was the class ownership structure: `Task` inside `Pet`, `Pet` inside `Owner`, `Scheduler` using `Owner` as a read-only data source. This one design decision made every subsequent feature (sorting, filtering, recurrence, conflict detection) straightforward to implement and test in isolation, because there was always a single authoritative place to read or mutate task data.
+The part I'm most happy with is how the classes relate to each other. Task lives inside Pet, Pet lives inside Owner, and Scheduler just asks Owner for what it needs. Once that structure was right, everything else — sorting, filtering, recurring tasks, conflict detection — was pretty straightforward to add. I never had to dig through a messy global list or worry about duplicate data.
 
 **b. What you would improve**
 
-With another iteration, the conflict detector would be upgraded from exact-match to interval-overlap. Storing `start_time` as a string (HH:MM) also creates fragility — a proper `datetime.time` field with validation would make sorting and overlap math significantly cleaner and would eliminate the edge cases around string formatting.
+I'd improve the conflict detection first. Right now it only catches exact time matches. Real overlap detection (e.g., a 30-min task at 7:00 blocking anything before 7:30) would be more useful in practice.
 
-The Streamlit UI would also benefit from a "mark complete" button per task row so the owner can interact with the schedule in real time without editing code.
+I'd also change `start_time` from a plain string to an actual `datetime.time` object. Right now it's easy to enter "9:00" instead of "09:00" and things get weird. Using a real time type would fix that and make the math cleaner.
+
+And I'd add a "mark complete" button in the Streamlit UI so owners can check off tasks without touching any code.
 
 **c. Key takeaway**
 
-The most important lesson was that **AI is most valuable as a reviewer, not just a generator**. The biggest improvements in this project came not from asking AI to write code from scratch, but from asking it to critique an existing design — "what relationships are missing?", "what edge cases would break this?" — and then deciding which feedback to accept. Staying in the role of lead architect meant treating every AI suggestion as a proposal to evaluate, not an instruction to follow. That discipline kept the design coherent across four phases of incremental development.
+The biggest thing I learned is that AI works best when you treat it like a collaborator you're reviewing, not a source of final answers. The most useful moments weren't "write me a scheduler" — they were "here's what I built, what's wrong with it?" That's when AI actually caught real problems and helped improve the design. Staying in charge of the decisions made the project feel more coherent and easier to explain.
