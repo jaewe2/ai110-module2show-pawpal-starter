@@ -1,26 +1,27 @@
 # PawPal+ (Module 2 Project)
 
-You are building **PawPal+**, a Streamlit app that helps a pet owner plan care tasks for their pet.
+**PawPal+** is a Streamlit app that helps a pet owner plan and track care tasks across multiple pets, using a priority-based scheduler with smart filtering, recurrence, and conflict detection.
 
 ## Scenario
 
 A busy pet owner needs help staying consistent with pet care. They want an assistant that can:
 
 - Track pet care tasks (walks, feeding, meds, enrichment, grooming, etc.)
-- Consider constraints (time available, priority, owner preferences)
+- Consider constraints (time available, priority, preferences)
 - Produce a daily plan and explain why it chose that plan
 
-Your job is to design the system first (UML), then implement the logic in Python, then connect it to the Streamlit UI.
+## Features
 
-## What you will build
-
-Your final app should:
-
-- Let a user enter basic owner + pet info
-- Let a user add/edit tasks (duration + priority at minimum)
-- Generate a daily schedule/plan based on constraints and priorities
-- Display the plan clearly (and ideally explain the reasoning)
-- Include tests for the most important scheduling behaviors
+| Feature | Description |
+|---|---|
+| **Multi-pet support** | Add as many pets as you like; each pet owns its own task list |
+| **Priority scheduling** | `Scheduler.generate_plan()` sorts tasks by priority (high → low), then by duration, and fits as many as possible within the owner's daily time budget |
+| **Sort by time** | `sort_by_time()` orders tasks chronologically by `start_time` (HH:MM); unscheduled tasks appear last |
+| **Filter by pet / status** | `filter_tasks()` lets you view one pet's pending tasks or review completed work |
+| **Recurring tasks** | Daily and weekly tasks auto-generate their next occurrence when marked complete, using `timedelta` |
+| **Conflict detection** | `detect_conflicts()` scans for tasks sharing an exact `start_time`, both within a single pet and across pets; surfaces `st.warning` banners in the UI |
+| **Skipped task list** | After generating a plan, tasks that didn't fit the time budget are shown in an expandable panel |
+| **Progress bar** | Visual indicator of how much of the day's time budget is consumed by the plan |
 
 ## Getting started
 
@@ -30,6 +31,12 @@ Your final app should:
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+```
+
+### Run the app
+
+```bash
+streamlit run app.py
 ```
 
 ## Smarter Scheduling
@@ -65,7 +72,11 @@ The suite contains **36 tests** across all four classes, covering:
 **Confidence level: ★★★★☆**
 Core scheduling logic, recurrence, and conflict detection are well covered. The main gap is integration-level testing (e.g., a full session through the Streamlit UI) and validation of edge inputs like negative durations or malformed time strings.
 
-### Suggested workflow
+## 📸 Demo
+
+<a href="/course_images/ai110/pawpal_screenshot.png" target="_blank"><img src='/course_images/ai110/pawpal_screenshot.png' title='PawPal App' width='' alt='PawPal App' class='center-block' /></a>
+
+## Suggested workflow
 
 1. Read the scenario carefully and identify requirements and edge cases.
 2. Draft a UML diagram (classes, attributes, methods, relationships).
