@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Optional
+
+VALID_CATEGORIES = {"Exercise", "Nutrition", "Medical", "Grooming", "Enrichment", "Other"}
+VALID_FREQUENCIES = {"daily", "weekly", "as needed"}
+_TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 
 
 @dataclass
@@ -15,6 +20,28 @@ class Task:
     completed: bool = False
     start_time: str = ""           # "HH:MM" — empty means unscheduled
     due_date: str = ""             # "YYYY-MM-DD" — empty means no due date
+
+    def __post_init__(self):
+        self.name = self.name.strip()
+        if not self.name:
+            raise ValueError("Task name cannot be empty")
+        if len(self.name) > 100:
+            raise ValueError("Task name cannot exceed 100 characters")
+        if self.category not in VALID_CATEGORIES:
+            raise ValueError(f"Invalid category '{self.category}'. Must be one of: {', '.join(sorted(VALID_CATEGORIES))}")
+        if not (1 <= self.priority <= 5):
+            raise ValueError(f"Priority must be 1–5, got {self.priority}")
+        if self.duration_minutes <= 0:
+            raise ValueError(f"duration_minutes must be positive, got {self.duration_minutes}")
+        if self.frequency not in VALID_FREQUENCIES:
+            raise ValueError(f"Invalid frequency '{self.frequency}'. Must be one of: {', '.join(VALID_FREQUENCIES)}")
+        if self.start_time and not _TIME_RE.match(self.start_time):
+            raise ValueError(f"start_time must be HH:MM (24 h) or empty, got '{self.start_time}'")
+        if self.due_date:
+            try:
+                date.fromisoformat(self.due_date)
+            except ValueError:
+                raise ValueError(f"due_date must be YYYY-MM-DD or empty, got '{self.due_date}'")
 
     def mark_complete(self):
         """Mark this task as completed."""
@@ -49,6 +76,17 @@ class Pet:
     special_needs: str = ""
     tasks: list[Task] = field(default_factory=list)
 
+    def __post_init__(self):
+        self.name = self.name.strip()
+        if not self.name:
+            raise ValueError("Pet name cannot be empty")
+        if len(self.name) > 50:
+            raise ValueError("Pet name cannot exceed 50 characters")
+        if self.age < 0:
+            raise ValueError("Age cannot be negative")
+        if len(self.special_needs) > 200:
+            self.special_needs = self.special_needs[:200]
+
     def get_summary(self) -> str:
         """Return a human-readable description of the pet."""
         summary = f"{self.name} ({self.species}, age {self.age})"
@@ -70,6 +108,15 @@ class Owner:
     name: str
     available_minutes: int
     pets: list[Pet] = field(default_factory=list)
+
+    def __post_init__(self):
+        self.name = self.name.strip()
+        if not self.name:
+            raise ValueError("Owner name cannot be empty")
+        if len(self.name) > 100:
+            raise ValueError("Owner name cannot exceed 100 characters")
+        if self.available_minutes <= 0:
+            raise ValueError("available_minutes must be positive")
 
     def add_pet(self, pet: Pet):
         """Add a pet to this owner's list of pets."""
@@ -159,9 +206,11 @@ class Scheduler:
                 cross.setdefault(task.start_time, []).append(f"{pet.name}/{task.name}")
         for time_slot, entries in cross.items():
             if len(entries) > 1:
-                warnings.append(
-                    f"Cross-pet conflict at {time_slot}: {', '.join(entries)}"
-                )
+                pet_names = {e.split("/")[0] for e in entries}
+                if len(pet_names) > 1:
+                    warnings.append(
+                        f"Cross-pet conflict at {time_slot}: {', '.join(entries)}"
+                    )
 
         return warnings
 
